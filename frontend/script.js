@@ -4,7 +4,7 @@
 // ============================================
 
 // Configuration
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'https://legal-system-xu6z.onrender.com/';
 let currentUser = null;
 let searchType = 'hybrid';
 let filters = {};
