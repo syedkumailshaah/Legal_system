@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
-from typing import Optional
+from typing import Optional, List, Dict
 from datetime import datetime
 import os
 import json
@@ -21,9 +21,11 @@ async def upload_document(
     description: str = Form("")
 ):
     try:
+        # 1. Validate File Type
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(400, "Only PDF files are allowed")
 
+        # 2. Save File Locally
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_filename = file.filename.replace(" ", "_")
         file_path = f"uploads/{timestamp}_{safe_filename}"
@@ -32,10 +34,13 @@ async def upload_document(
             content = await file.read()
             await f.write(content)
         
+        # 3. Extract and Parse Text (Lightweight CPU operations)
         text = extract_text_from_pdf(file_path)
         sections_list = parse_legal_document(text)
         
+        # 4. Database Insertion
         if db.db is not None:
+            # --- MONGODB PATH ---
             law = {
                 "title": title or file.filename.replace('.pdf', ''),
                 "original_filename": file.filename,
@@ -55,6 +60,7 @@ async def upload_document(
             result = db.laws.insert_one(law)
             law_id = str(result.inserted_id)
             
+            # Process sections and generate embeddings via API
             for i, section in enumerate(sections_list):
                 section_doc = {
                     "law_id": law_id,
@@ -68,7 +74,9 @@ async def upload_document(
                 section_result = db.sections.insert_one(section_doc)
                 section_id = str(section_result.inserted_id)
                 
-                vector = create_vector_embedding(section['content'])
+                # IMPORTANT: await the async API call here to prevent RAM crash
+                vector = await create_vector_embedding(section['content'])
+                
                 vector_doc = {
                     "section_id": section_id,
                     "law_id": law_id,
@@ -77,7 +85,7 @@ async def upload_document(
                 }
                 db.vectors.insert_one(vector_doc)
         else:
-            # File based logic
+            # --- FILE-BASED FALLBACK PATH ---
             laws_file = "data/laws.json"
             sections_file = "data/sections.json"
             vectors_file = "data/vectors.json"
@@ -121,7 +129,10 @@ async def upload_document(
                     "order": i
                 }
                 sections_data.append(section_doc)
-                vector = create_vector_embedding(section['content'])
+                
+                # IMPORTANT: await the async API call here
+                vector = await create_vector_embedding(section['content'])
+                
                 vector_doc = {
                     "id": str(len(vectors_data) + 1),
                     "section_id": section_id,
@@ -167,6 +178,7 @@ async def get_documents(
             for doc in documents:
                 doc["id"] = str(doc["_id"])
                 del doc["_id"]
+                # Don't send full text in list view to save bandwidth
                 if "full_text" in doc:
                     del doc["full_text"]
         else:
@@ -248,14 +260,41 @@ async def delete_document(doc_id: str):
             result = db.laws.delete_one({"_id": ObjectId(doc_id)})
             if result.deleted_count == 0:
                 raise HTTPException(404, "Document not found")
+            
+            # Cascade delete sections and vectors
             db.sections.delete_many({"law_id": doc_id})
             db.vectors.delete_many({"law_id": doc_id})
+            
             return {"message": "Document deleted successfully"}
         else:
-            # File based delete (Simplified)
+            # File based delete
             laws_file = "data/laws.json"
             if not os.path.exists(laws_file): raise HTTPException(404, "Document not found")
-            # Logic omitted for brevity but follows original code pattern
+            
+            with open(laws_file, 'r', encoding='utf-8') as f: laws_data = json.load(f)
+            
+            # Filter out the document to be deleted
+            new_laws_data = [d for d in laws_data if d["id"] != doc_id]
+            
+            if len(new_laws_data) == len(laws_data):
+                raise HTTPException(404, "Document not found")
+                
+            with open(laws_file, 'w', encoding='utf-8') as f: json.dump(new_laws_data, f, indent=2, ensure_ascii=False)
+            
+            # Clean up sections
+            sections_file = "data/sections.json"
+            if os.path.exists(sections_file):
+                with open(sections_file, 'r', encoding='utf-8') as f: sections_data = json.load(f)
+                new_sections_data = [s for s in sections_data if s["law_id"] != doc_id]
+                with open(sections_file, 'w', encoding='utf-8') as f: json.dump(new_sections_data, f, indent=2, ensure_ascii=False)
+
+            # Clean up vectors
+            vectors_file = "data/vectors.json"
+            if os.path.exists(vectors_file):
+                with open(vectors_file, 'r', encoding='utf-8') as f: vectors_data = json.load(f)
+                new_vectors_data = [v for v in vectors_data if v["law_id"] != doc_id]
+                with open(vectors_file, 'w', encoding='utf-8') as f: json.dump(new_vectors_data, f, indent=2, ensure_ascii=False)
+
             return {"message": "Document deleted successfully"}
             
     except HTTPException:

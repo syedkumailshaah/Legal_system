@@ -3,8 +3,8 @@ from datetime import datetime
 import os
 import json
 from .. import database as db
-from ..utils.nlp import qa_pipeline, summarizer, logger
 from pymongo import DESCENDING
+from ..config import HF_TOKEN
 
 router = APIRouter(tags=["System Info"])
 
@@ -14,10 +14,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "database": "connected" if db.db is not None else "file-based",
-        "ai_models": {
-            "qa": "available" if qa_pipeline else "unavailable",
-            "summarization": "available" if summarizer else "unavailable"
-        }
+        "ai_mode": "cloud_inference" if HF_TOKEN else "fallback_hashing"
     }
 
 @router.get("/api/stats")
@@ -52,5 +49,4 @@ async def get_statistics():
             return {"status": "running", "mode": "file-based", "note": "Connect MongoDB for full stats"}
             
     except Exception as e:
-        logger.error(f"Error getting statistics: {e}")
         return {"error": str(e)}

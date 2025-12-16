@@ -1,111 +1,138 @@
 import os
+import hashlib
 import logging
-from openai import OpenAI
+import httpx
+from typing import List, Dict, Any
+import pypdf
+import re
+from ..config import HF_TOKEN
 
-# 1. Setup
 logger = logging.getLogger(__name__)
 
-# Replace all local model objects with None or the client
-qa_pipeline = None  # No local QA model
-summarizer = None  # No local Summarizer model
-tokenizer = None  # No local Tokenizer
-model = None  # No local LLM
+# Hugging Face API URLs (Free Serverless Inference)
+API_URL_QA = "https://api-inference.huggingface.co/models/deepset/roberta-base-squad2"
+API_URL_SUM = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+API_URL_EMBED = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 
-# Initialize the OpenAI Client globally
-client = None
+HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
 
-def initialize_llm_models():
-    """Initializes the OpenAI client using the API key from environment variables."""
-    global client
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        client = OpenAI(api_key=api_key)
-        logger.info("OpenAI client initialized.")
-    else:
-        logger.warning("OPENAI_API_KEY not found. LLM functions will use fallback.")
+async def query_hf_api(url: str, payload: dict) -> Any:
+    """Helper to query Hugging Face API asynchronously"""
+    if not HF_TOKEN:
+        logger.warning("HF_TOKEN not set. AI features will fail or fallback.")
+        return None
+        
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, headers=HEADERS, json=payload)
+            if response.status_code != 200:
+                logger.error(f"HF API Error {response.status_code}: {response.text}")
+                return None
+            return response.json()
+    except Exception as e:
+        logger.error(f"HF API Connection Error: {e}")
+        return None
 
-# 2. RAG Generation (Replaces 'qa_pipeline')
-def generate_llm_answer(question: str, context: str) -> str:
-    """Uses OpenAI API to answer a question based on context."""
-    if not client:
-        return "AI service is unavailable (API key missing)."
-
-    prompt = f"You are a helpful legal assistant that answers questions based ONLY on the provided legal documents. Use a professional tone.\n\nContext:\n---\n{context}\n---\n\nQuestion: {question}"
+async def create_vector_embedding(text: str) -> List[float]:
+    """Get embeddings via API or fallback to hashing if API fails"""
+    vector_size = 384
     
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # Fast and cost-effective model
-            messages=[
-                {"role": "system", "content": "You are a legal Q&A assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.0 # Keep it factual
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"OpenAI LLM API call failed: {e}")
-        return "Error retrieving answer from AI."
+    # 1. Try API
+    if HF_TOKEN:
+        result = await query_hf_api(API_URL_EMBED, {"inputs": text, "options": {"wait_for_model": True}})
+        if result and isinstance(result, list):
+            # API might return list of list for batch, or flat list
+            if isinstance(result[0], list): 
+                return result[0]
+            return result
+            
+    # 2. Fallback: Hashing (Low RAM usage)
+    logger.info("Using fallback hashing for embedding.")
+    hash_str = hashlib.sha256(text.encode()).hexdigest()
+    vector = []
+    for i in range(0, min(len(hash_str), vector_size * 2), 2):
+        value = (int(hash_str[i:i + 2], 16) / 255.0) * 2 - 1
+        vector.append(value)
+    while len(vector) < vector_size:
+        vector.append(0.0)
+    return vector[:vector_size]
 
-# 3. Summarization (Replaces 'summarizer')
-def get_summary(text: str, max_length: int) -> str:
-    """Uses OpenAI API to summarize a document."""
-    if not client:
-        return text[:max_length] # Fallback to extractive
+def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+    # Standard math, no changes needed
+    import math
+    if len(vec1) != len(vec2): return 0.0
+    dot = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = math.sqrt(sum(a * a for a in vec1))
+    norm2 = math.sqrt(sum(b * b for b in vec2))
+    if norm1 == 0 or norm2 == 0: return 0.0
+    return dot / (norm1 * norm2)
+
+def extract_text_from_pdf(file_path: str) -> str:
+    # PDF extraction requires very little RAM, keeping local
+    try:
+        text = ""
+        with open(file_path, "rb") as f:
+            reader = pypdf.PdfReader(f)
+            for page in reader.pages:
+                text += (page.extract_text() or "") + "\n"
+        return text.strip()
+    except Exception as e:
+        logger.error(f"Error reading PDF: {e}")
+        return ""
+
+def parse_legal_document(text: str) -> List[Dict[str, Any]]:
+    # Regex parsing is lightweight
+    sections = []
+    lines = text.split("\n")
+    # Simplified regex logic for brevity
+    current_sec = None
+    content = []
+    
+    for line in lines:
+        if "Section" in line or "Article" in line:
+            if current_sec:
+                sections.append({"section_number": current_sec, "title": f"Section {current_sec}", "content": "\n".join(content)})
+            current_sec = line.strip()[:20] # Take first 20 chars as ID
+            content = []
+        else:
+            content.append(line)
+            
+    if current_sec:
+        sections.append({"section_number": current_sec, "title": f"Section {current_sec}", "content": "\n".join(content)})
+    elif not sections and text:
+        # Fallback if no sections detected
+        sections.append({"section_number": "1", "title": "General", "content": text})
         
-    prompt = f"Summarize the following legal text into a concise paragraph of less than {max_length} characters:\n\nTEXT:\n---\n{text}"
+    return sections
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a concise summarization assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"OpenAI Summarization API call failed: {e}")
-        return text[:max_length]
-
-# 4. Chat/General Q&A (Replaces 'tokenizer' and 'model')
-def generate_chat_response(message: str, history: list) -> str:
-    """Uses OpenAI API for a general chat response."""
-    if not client:
-        return "I am your legal research assistant. How can I assist you today?"
+async def generate_llm_answer(question: str, context: str) -> str:
+    """Ask Question via API"""
+    if not HF_TOKEN:
+        return "AI Token missing. Please set HF_TOKEN in environment."
         
-    messages = [{"role": "system", "content": "You are a helpful and polite legal research assistant."}]
-    # Add conversation history
-    # ... (Logic to parse and add history to messages list)
-    messages.append({"role": "user", "content": message})
+    payload = {
+        "inputs": {
+            "question": question,
+            "context": context
+        }
+    }
+    
+    response = await query_hf_api(API_URL_QA, payload)
+    
+    if response and 'answer' in response:
+        return f"AI Answer: {response['answer']} (Score: {response.get('score', 0):.2f})"
+    
+    return "I couldn't generate an answer from the provided context."
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=messages
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"OpenAI Chat API call failed: {e}")
-        return "I am currently experiencing technical difficulties. Please try again."
-
-# 5. Embedding (Crucial for the 'search_documents' functionality which is RAG)
-# You need to update your 'search_documents' function to use OpenAI's embedding model 
-# (e.g., 'text-embedding-ada-002') instead of the local 'sentence-transformers' model.
-# If you are using an external vector database (like Pinecone/Qdrant free tier), 
-# they often have an easy integration for this step.
-# If you are sticking to your Mongo/file-based hybrid search, you'll need this function.
-def get_embedding(text: str) -> List[float]:
-    """Uses OpenAI API to get the embedding vector for a text string."""
-    if not client:
-        # Fallback needed if you can't use an external vector DB/search
-        return [0.0] * 768 # Dummy vector
+async def summarize_text(text: str) -> str:
+    """Summarize via API"""
+    if not HF_TOKEN:
+        return text[:200] + "..."
         
-    try:
-        response = client.embeddings.create(
-            model="text-embedding-ada-002",
-            input=text
-        )
-        return response.data[0].embedding
-    except Exception as e:
-        logger.error(f"OpenAI Embedding API call failed: {e}")
-        return [0.0] * 768
+    payload = {"inputs": text}
+    response = await query_hf_api(API_URL_SUM, payload)
+    
+    if response and isinstance(response, list) and 'summary_text' in response[0]:
+        return response[0]['summary_text']
+        
+    return text[:200] + "..."
