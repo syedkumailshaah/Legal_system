@@ -1,0 +1,254 @@
+# .gitignore for Legal Assistant Project (Backend + Frontend)
+# ============================================
+
+# ============ BACKEND SPECIFIC ============
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyCharm
+.idea/
+*.iml
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# MongoDB
+data/
+*.ns
+*.0
+*.1
+*.2
+*.3
+mongod.lock
+storage.bson
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# PyCharm
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Temporary uploads
+uploads/
+!uploads/.gitkeep
+
+# Database files (if using SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Secrets
+secrets.json
+*.pem
+*.key
+*.crt
+
+# Logs
+*.log
+logs/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# ============ FRONTEND SPECIFIC ============
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.serverless/
+
+# Cache
+.cache/
+.turbo/
+.vite/
+.vite-ssg-temp/
+
+# Framework specific
+# React
+.eslintcache
+.stylelintcache
+.jest_cache/
+.jest_cache/
+.svelte-kit/
+
+# Vue/Nuxt
+.nuxt/
+.output/
+
+# Angular
+.angular/
+
+# Gatsby
+.cache/
+# Comment in the public line if your project uses Gatsby and not Next.js
+# https://nextjs.org/blog/next-9-1#public-directory-support
+# public
+
+# Storybook
+storybook-static/
+stories/
+
+# VitePress
+.vitepress/cache/
+.vitepress/dist/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# KDE
+.directory
+
+# Temporary files
+*.tmp
+*.temp
+
+# System files
+*.swp
+*.swo
+*~
+
+# IDE files
+*.sublime-*
+*.komodoproject
+.komodotools
+
+# OS generated files
+.DS_Store?
+ehthumbs.db
+Icon?
+Thumbs.db
+
+# ============ PROJECT SPECIFIC ============
+
+# Project configuration
+.project
+.classpath
+.settings/
+
+# Package files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Python package management
+Pipfile.lock
+poetry.lock
+requirements*.txt
+
+# Jupyter
+*.ipynb
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains IDEs
+.idea/
+
+# Specific to your project
+# MongoDB data directory
+mongodb_data/
+data/
+*.bson
+
+# Uploaded files (keep empty placeholder if needed)
+uploads/*
+!uploads/.gitkeep
+
+# AI model caches (if downloading models)
+.cache/
+.huggingface/
+
+# ============ OPTIONAL / RECOMMENDED ============
+
+# Local History for Visual Studio Code
+.history/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# End of https://www.toptal.com/developers/gitignore/api/python,node,react,vue,visualstudiocode
