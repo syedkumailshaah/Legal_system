@@ -9,10 +9,10 @@ from ..config import HF_TOKEN
 
 logger = logging.getLogger(__name__)
 
-# Hugging Face API URLs (Free Serverless Inference)
-API_URL_QA = "https://api-inference.huggingface.co/models/deepset/roberta-base-squad2"
-API_URL_SUM = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-API_URL_EMBED = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+# UPDATED: Hugging Face API URLs (New Router Address)
+API_URL_QA = "https://router.huggingface.co/hf-inference/models/deepset/roberta-base-squad2"
+API_URL_SUM = "https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn"
+API_URL_EMBED = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
 
 HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
 
@@ -23,8 +23,9 @@ async def query_hf_api(url: str, payload: dict) -> Any:
         return None
         
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client: # Increased timeout slightly
             response = await client.post(url, headers=HEADERS, json=payload)
+            
             if response.status_code != 200:
                 logger.error(f"HF API Error {response.status_code}: {response.text}")
                 return None
@@ -39,6 +40,7 @@ async def create_vector_embedding(text: str) -> List[float]:
     
     # 1. Try API
     if HF_TOKEN:
+        # Note: 'options': {'wait_for_model': True} helps if the model is sleeping
         result = await query_hf_api(API_URL_EMBED, {"inputs": text, "options": {"wait_for_model": True}})
         if result and isinstance(result, list):
             # API might return list of list for batch, or flat list
@@ -114,7 +116,8 @@ async def generate_llm_answer(question: str, context: str) -> str:
         "inputs": {
             "question": question,
             "context": context
-        }
+        },
+        "options": {"wait_for_model": True}
     }
     
     response = await query_hf_api(API_URL_QA, payload)
@@ -122,6 +125,10 @@ async def generate_llm_answer(question: str, context: str) -> str:
     if response and 'answer' in response:
         return f"AI Answer: {response['answer']} (Score: {response.get('score', 0):.2f})"
     
+    # Handle possible model specific error keys
+    if response and 'error' in response:
+        return f"AI Error: {response['error']}"
+
     return "I couldn't generate an answer from the provided context."
 
 async def summarize_text(text: str) -> str:
@@ -129,7 +136,10 @@ async def summarize_text(text: str) -> str:
     if not HF_TOKEN:
         return text[:200] + "..."
         
-    payload = {"inputs": text}
+    payload = {
+        "inputs": text,
+        "options": {"wait_for_model": True}
+    }
     response = await query_hf_api(API_URL_SUM, payload)
     
     if response and isinstance(response, list) and 'summary_text' in response[0]:
