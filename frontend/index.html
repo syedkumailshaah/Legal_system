@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal AI System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Quick fixes for any immediate styling issues */
+        .range-inputs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .range-separator {
+            color: var(--legal-gray);
+            font-weight: 500;
+        }
+        
+        .text-sm {
+            font-size: 0.875rem;
+        }
+        
+        .text-blue {
+            color: var(--legal-blue);
+        }
+        
+        .font-semibold {
+            font-weight: 600;
+        }
+        
+        .mt-xs {
+            margin-top: 0.5rem;
+        }
+        
+        .mt-sm {
+            margin-top: 1rem;
+        }
+        
+        .mt-lg {
+            margin-top: 2rem;
+        }
+        
+        /* Modal fixes */
+        .modal-body .form-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        /* Toast fixes */
+        .toast.ai .toast-icon {
+            background: linear-gradient(135deg, var(--legal-purple), #A78BFA);
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">Loading...</div>
+    </div>
+
+    <!-- Document/Section View Modal -->
+    <div class="modal" id="viewModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Document Details</h3>
+                <button class="modal-close" onclick="closeModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                Loading...
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+                <button class="btn btn-primary" onclick="copyModalContent()">
+                    <i class="fas fa-copy"></i> Copy Content
+                </button>
+                <button class="btn btn-outline" onclick="summarizeCurrentDocument()">
+                    <i class="fas fa-file-contract"></i> AI Summary
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ask AI Modal -->
+    <div class="modal" id="askAIModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>AI Legal Assistant</h3>
+                <button class="modal-close" onclick="closeAIModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Your Legal Question</label>
+                    <textarea class="form-control" id="aiQuestion" rows="4" 
+                              placeholder="Ask a question about this legal content..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Context</label>
+                    <div class="context-preview" id="aiContext">
+                        Loading context...
+                    </div>
+                </div>
+                
+                <!-- AI Options -->
+                <div class="ai-options" id="aiOptions" style="display: none;">
+                    <div class="ai-option-header">Quick Analysis Options:</div>
+                    <div class="ai-options-grid">
+                        <button class="ai-option-btn" onclick="askForSummary()">
+                            <i class="fas fa-file-contract"></i> Summarize
+                        </button>
+                        <button class="ai-option-btn" onclick="askForKeywords()">
+                            <i class="fas fa-key"></i> Extract Keywords
+                        </button>
+                        <button class="ai-option-btn" onclick="askForAnalysis()">
+                            <i class="fas fa-chart-bar"></i> Detailed Analysis
+                        </button>
+                        <button class="ai-option-btn" onclick="askForImplications()">
+                            <i class="fas fa-balance-scale"></i> Legal Implications
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="ai-response" id="aiResponse">
+                    <!-- AI response will appear here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAIModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitAIQuestion()">
+                    <i class="fas fa-robot"></i> Ask AI (LLM)
+                </button>
+                <button class="btn btn-outline" onclick="submitDetailedQuestion()">
+                    <i class="fas fa-search-plus"></i> Detailed Analysis
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Search Modal -->
+    <div class="modal" id="advancedSearchModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Advanced Search</h3>
+                <button class="modal-close" onclick="closeAdvancedSearch()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Search Query</label>
+                    <input type="text" class="form-control" id="advancedSearchQuery" 
+                           placeholder="Enter your search query">
+                </div>
+                
+                <div class="metadata-form">
+                    <div class="form-group">
+                        <label class="form-label">Category</label>
+                        <select class="form-control" id="advancedCategory">
+                            <option value="">All Categories</option>
+                            <option value="penal">Penal Code</option>
+                            <option value="cyber">Cyber Crime</option>
+                            <option value="civil">Civil Law</option>
+                            <option value="criminal">Criminal Law</option>
+                            <option value="constitutional">Constitutional Law</option>
+                            <option value="fia">FIA Regulations</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Jurisdiction</label>
+                        <input type="text" class="form-control" id="advancedJurisdiction" 
+                               placeholder="e.g., Pakistan, Federal">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Year Range</label>
+                        <div class="range-inputs">
+                            <input type="number" class="form-control" id="yearFrom" 
+                                   placeholder="From" min="1900" max="2100">
+                            <span class="range-separator">to</span>
+                            <input type="number" class="form-control" id="yearTo" 
+                                   placeholder="To" min="1900" max="2100">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Search Type</label>
+                    <div class="search-types">
+                        <div class="search-type active" onclick="setAdvancedSearchType('hybrid')">
+                            <i class="fas fa-layer-group"></i> Hybrid Search
+                        </div>
+                        <div class="search-type" onclick="setAdvancedSearchType('vector')">
+                            <i class="fas fa-brain"></i> Semantic Search
+                        </div>
+                        <div class="search-type" onclick="setAdvancedSearchType('text')">
+                            <i class="fas fa-file-alt"></i> Text Search
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAdvancedSearch()">Cancel</button>
+                <button class="btn btn-primary" onclick="performAdvancedSearch()">
+                    <i class="fas fa-search"></i> Advanced Search
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login/Register Screens -->
+    <div id="authScreens">
+        <!-- Login Screen -->
+        <div class="auth-container" id="loginScreen">
+            <div class="auth-header">
+                <div class="auth-icon">
+                    <i class="fas fa-gavel"></i>
+                </div>
+                <h2>Legal AI System</h2>
+                <p>AI-Powered Legal Document Analysis</p>
+            </div>
+            <form id="loginForm" onsubmit="event.preventDefault(); login();">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" id="loginEmail" placeholder="Enter your email" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" id="loginPassword" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+                <div class="text-center mt-lg">
+                    <p class="text-gray">Don't have an account? 
+                        <a href="#" onclick="showRegister()" class="text-blue font-semibold">Register</a>
+                    </p>
+                </div>
+            </form>
+        </div>
+
+        <!-- Register Screen -->
+        <div class="auth-container" id="registerScreen" style="display: none;">
+            <div class="auth-header">
+                <div class="auth-icon">
+                    <i class="fas fa-user-plus"></i>
+                </div>
+                <h2>Create Account</h2>
+                <p>Join our AI legal research platform</p>
+            </div>
+            <form id="registerForm" onsubmit="event.preventDefault(); register();">
+                <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" class="form-control" id="registerUsername" placeholder="Choose username" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" id="registerEmail" placeholder="Enter your email" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" class="form-control" id="registerFullName" placeholder="Enter your full name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" id="registerPassword" placeholder="Create password" required>
+                </div>
+                <button type="submit" class="btn btn-success btn-full">
+                    <i class="fas fa-user-plus"></i> Register
+                </button>
+                <div class="text-center mt-lg">
+                    <p class="text-gray">Already have an account? 
+                        <a href="#" onclick="showLogin()" class="text-blue font-semibold">Login</a>
+                    </p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App (Hidden until login) -->
+    <div class="container" id="mainApp" style="display: none;">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <div class="logo" onclick="showPage('dashboard')" style="cursor: pointer;">
+                <div class="logo-icon">
+                    <i class="fas fa-gavel"></i>
+                </div>
+                <div class="logo-text">Legal AI System</div>
+                <div class="ai-badge" id="aiStatusBadge">
+                    <i class="fas fa-brain"></i> AI Ready
+                </div>
+            </div>
+            
+            <div class="nav-links">
+                <a href="#" class="nav-link active" onclick="showPage('search')">
+                    <i class="fas fa-search"></i> Search
+                </a>
+                <a href="#" class="nav-link" onclick="showPage('upload')">
+                    <i class="fas fa-upload"></i> Upload
+                </a>
+                <a href="#" class="nav-link" onclick="showPage('documents')">
+                    <i class="fas fa-file-alt"></i> Documents
+                </a>
+                <a href="#" class="nav-link" onclick="showPage('dashboard')">
+                    <i class="fas fa-chart-bar"></i> Dashboard
+                </a>
+                <div class="user-info">
+                    <div class="user-avatar" id="userAvatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <span id="usernameDisplay">User</span>
+                    <button class="logout-btn" onclick="logout()" title="Logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Search Page -->
+            <div class="page active" id="searchPage">
+                <div class="search-hero">
+                    <h1>AI-Powered Legal Search</h1>
+                    <p>Find legal information using advanced AI models and semantic search</p>
+                </div>
+                
+                <div class="search-container">
+                    <div class="search-box">
+                        <div class="search-input-wrapper">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" class="search-input" id="searchQuery" 
+                                   placeholder="Search legal documents or ask a legal question...">
+                        </div>
+                        <button class="btn btn-primary btn-lg" onclick="performSearch()">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <button class="btn btn-outline btn-lg" onclick="showAdvancedSearch()" title="Advanced Search">
+                            <i class="fas fa-sliders-h"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="search-types">
+                        <div class="search-type active" onclick="setSearchType('hybrid')">
+                            <i class="fas fa-layer-group"></i> Hybrid Search
+                        </div>
+                        <div class="search-type" onclick="setSearchType('vector')">
+                            <i class="fas fa-brain"></i> Semantic AI Search
+                        </div>
+                        <div class="search-type" onclick="setSearchType('text')">
+                            <i class="fas fa-file-alt"></i> Text Search
+                        </div>
+                        <div class="search-type" onclick="setSearchType('llm')">
+                            <i class="fas fa-robot"></i> LLM Search
+                        </div>
+                    </div>
+                    
+                    <div class="search-filters">
+                        <div class="filter-chip" onclick="toggleFilter('penal')">
+                            <i class="fas fa-balance-scale"></i> Penal Code
+                        </div>
+                        <div class="filter-chip" onclick="toggleFilter('cyber')">
+                            <i class="fas fa-laptop-code"></i> Cyber Crime
+                        </div>
+                        <div class="filter-chip" onclick="toggleFilter('fia')">
+                            <i class="fas fa-shield-alt"></i> FIA Regulations
+                        </div>
+                        <div class="filter-chip" onclick="toggleFilter('civil')">
+                            <i class="fas fa-landmark"></i> Civil Law
+                        </div>
+                        <div class="filter-chip" onclick="toggleFilter('criminal')">
+                            <i class="fas fa-gavel"></i> Criminal Law
+                        </div>
+                    </div>
+                </div>
+
+                <div class="results-container">
+                    <div class="results-header">
+                        <h3 id="resultsTitle">Search Results</h3>
+                        <div class="results-actions">
+                            <div class="results-count" id="resultsCount">Enter a query to search</div>
+                            <div class="results-sort">
+                                <button class="action-btn btn-sm" onclick="exportSearchResults()">
+                                    <i class="fas fa-download"></i> Export
+                                </button>
+                                <button class="action-btn btn-sm" onclick="printSearchResults()">
+                                    <i class="fas fa-print"></i> Print
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="results-grid" id="searchResults">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">
+                                <i class="fas fa-search"></i>
+                            </div>
+                            <h3>Start Searching</h3>
+                            <p>Enter a query above to search legal documents using AI</p>
+                            <p class="text-gray mt-sm">Try: "What are the penalties for cyber crime?" or "Explain contract laws"</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Page -->
+            <div class="page" id="uploadPage">
+                <div class="upload-container">
+                    <div class="auth-header mb-xl">
+                        <div class="auth-icon">
+                            <i class="fas fa-upload"></i>
+                        </div>
+                        <h2>Upload Legal Documents</h2>
+                        <p>Upload PDF documents for AI-powered analysis</p>
+                    </div>
+                    
+                    <div class="drop-zone" id="dropZone">
+                        <div class="drop-zone-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h3>Drop PDF files here or click to select</h3>
+                        <p>AI will automatically analyze and extract legal sections</p>
+                        <p class="text-sm mt-sm"><i class="fas fa-info-circle"></i> Supports multiple PDF files. Max 50MB per file.</p>
+                    </div>
+                    <input type="file" id="fileInput" multiple accept=".pdf" style="display: none;" 
+                           onchange="handleFileSelect(event)">
+                    
+                    <div class="file-list" id="fileList"></div>
+                    
+                    <div class="metadata-form">
+                        <div class="form-group">
+                            <label class="form-label">Document Title</label>
+                            <input type="text" class="form-control" id="docTitle" placeholder="Enter document title">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Category</label>
+                            <select class="form-control" id="docCategory">
+                                <option value="">Select Category</option>
+                                <option value="penal">Penal Code</option>
+                                <option value="cyber">Cyber Crime</option>
+                                <option value="civil">Civil Law</option>
+                                <option value="criminal">Criminal Law</option>
+                                <option value="constitutional">Constitutional Law</option>
+                                <option value="fia">FIA Regulations</option>
+                                <option value="contract">Contract Law</option>
+                                <option value="property">Property Law</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Jurisdiction</label>
+                            <input type="text" class="form-control" id="docJurisdiction" value="Pakistan" placeholder="e.g., Pakistan, Federal">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Year</label>
+                            <input type="number" class="form-control" id="docYear" min="1900" max="2100" value="2024">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="docDescription" rows="4" placeholder="Enter document description (AI will use this for better understanding)"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="enableAIProcessing" checked>
+                            <label for="enableAIProcessing">Enable AI Processing (Extract sections & generate embeddings)</label>
+                        </div>
+                        <p class="text-sm text-gray mt-xs"><i class="fas fa-info-circle"></i> AI processing enables semantic search and better analysis</p>
+                    </div>
+                    
+                    <button class="btn btn-primary btn-full" onclick="uploadFiles()" id="uploadBtn">
+                        <i class="fas fa-upload"></i> Upload & Process with AI
+                    </button>
+                </div>
+            </div>
+
+            <!-- Documents Page -->
+            <div class="page" id="documentsPage">
+                <div class="upload-container">
+                    <div class="auth-header mb-xl">
+                        <div class="auth-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <h2>My Documents</h2>
+                        <p>Manage and analyze your legal documents</p>
+                    </div>
+                    
+                    <div class="documents-actions mb-lg">
+                        <button class="btn btn-outline" onclick="refreshDocuments()">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button class="btn btn-outline" onclick="batchAnalyzeSelected()">
+                            <i class="fas fa-robot"></i> AI Batch Analysis
+                        </button>
+                        <div class="search-input-wrapper sm">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" class="search-input" id="documentsSearch" 
+                                   placeholder="Search your documents..." onkeyup="searchDocuments()">
+                        </div>
+                    </div>
+                    
+                    <div class="documents-grid" id="documentsList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <h3>No Documents Yet</h3>
+                            <p>Upload your first legal document to get started</p>
+                            <button class="btn btn-primary mt-lg" onclick="showPage('upload')">
+                                <i class="fas fa-upload"></i> Upload Documents
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Page -->
+            <div class="page" id="dashboardPage">
+                <div class="upload-container">
+                    <div class="auth-header mb-xl">
+                        <div class="auth-icon">
+                            <i class="fas fa-chart-bar"></i>
+                        </div>
+                        <h2>AI System Dashboard</h2>
+                        <p>Overview of your AI-powered legal system</p>
+                    </div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-upload"></i>
+                            </div>
+                            <div class="stat-value" id="totalUploads">0</div>
+                            <div class="stat-label">Total Documents</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-search"></i>
+                            </div>
+                            <div class="stat-value" id="totalSearches">0</div>
+                            <div class="stat-label">AI Searches</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <div class="stat-value" id="totalDocuments">0</div>
+                            <div class="stat-label">Documents in System</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-brain"></i>
+                            </div>
+                            <div class="stat-value" id="totalSections">0</div>
+                            <div class="stat-label">AI Analyzed Sections</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="stat-value" id="aiQueries">0</div>
+                            <div class="stat-label">LLM Queries</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <div class="stat-value" id="vectorCount">0</div>
+                            <div class="stat-label">AI Embeddings</div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-sections">
+                        <div class="dashboard-section">
+                            <h3 class="mb-lg">Recent Activity</h3>
+                            <div class="activity-list" id="recentActivity">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">
+                                        <i class="fas fa-history"></i>
+                                    </div>
+                                    <h3>No Recent Activity</h3>
+                                    <p>Activity will appear here as you use the system</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="dashboard-section">
+                            <h3 class="mb-lg">AI Model Status</h3>
+                            <div class="ai-status-card" id="aiStatusCard">
+                                <div class="loading">
+                                    <div class="spinner"></div>
+                                    <p>Checking AI models...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-section">
+                        <h3 class="mb-lg">Quick Actions</h3>
+                        <div class="quick-actions">
+                            <button class="btn btn-outline" onclick="showPage('upload')">
+                                <i class="fas fa-upload"></i> Upload New
+                            </button>
+                            <button class="btn btn-outline" onclick="showPage('search')">
+                                <i class="fas fa-search"></i> Search
+                            </button>
+                            <button class="btn btn-outline" onclick="testAIQuery()">
+                                <i class="fas fa-robot"></i> Test AI
+                            </button>
+                            <button class="btn btn-outline" onclick="checkSystemHealth()">
+                                <i class="fas fa-heartbeat"></i> System Health
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
