@@ -9,7 +9,7 @@ from ..config import HF_TOKEN
 
 logger = logging.getLogger(__name__)
 
-# UPDATED: Hugging Face API URLs (New Router Address)
+# Hugging Face API URLs
 API_URL_QA = "https://router.huggingface.co/hf-inference/models/deepset/roberta-base-squad2"
 API_URL_SUM = "https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn"
 API_URL_EMBED = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
@@ -23,7 +23,8 @@ async def query_hf_api(url: str, payload: dict) -> Any:
         return None
         
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client: # Increased timeout slightly
+        # Increased timeout to 30s as cold models take time to load
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, headers=HEADERS, json=payload)
             
             if response.status_code != 200:
@@ -40,13 +41,23 @@ async def create_vector_embedding(text: str) -> List[float]:
     
     # 1. Try API
     if HF_TOKEN:
-        # Note: 'options': {'wait_for_model': True} helps if the model is sleeping
-        result = await query_hf_api(API_URL_EMBED, {"inputs": text, "options": {"wait_for_model": True}})
-        if result and isinstance(result, list):
-            # API might return list of list for batch, or flat list
-            if isinstance(result[0], list): 
-                return result[0]
-            return result
+        # FIX: Input must be a LIST ["text"] to force Feature Extraction mode.
+        # Sending a raw string triggers the Similarity pipeline error.
+        payload = {
+            "inputs": [text], 
+            "options": {"wait_for_model": True}
+        }
+        
+        result = await query_hf_api(API_URL_EMBED, payload)
+        
+        if result:
+            # Result format is usually [[float, float, ...]] for a batch of 1
+            if isinstance(result, list):
+                # Check if it's a nested list (batch response)
+                if len(result) > 0 and isinstance(result[0], list):
+                    return result[0]
+                # If it returned a flat list (rare but possible)
+                return result
             
     # 2. Fallback: Hashing (Low RAM usage)
     logger.info("Using fallback hashing for embedding.")
@@ -60,7 +71,6 @@ async def create_vector_embedding(text: str) -> List[float]:
     return vector[:vector_size]
 
 def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-    # Standard math, no changes needed
     import math
     if len(vec1) != len(vec2): return 0.0
     dot = sum(a * b for a, b in zip(vec1, vec2))
@@ -70,7 +80,6 @@ def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     return dot / (norm1 * norm2)
 
 def extract_text_from_pdf(file_path: str) -> str:
-    # PDF extraction requires very little RAM, keeping local
     try:
         text = ""
         with open(file_path, "rb") as f:
@@ -83,27 +92,36 @@ def extract_text_from_pdf(file_path: str) -> str:
         return ""
 
 def parse_legal_document(text: str) -> List[Dict[str, Any]]:
-    # Regex parsing is lightweight
     sections = []
     lines = text.split("\n")
-    # Simplified regex logic for brevity
     current_sec = None
     content = []
     
     for line in lines:
         if "Section" in line or "Article" in line:
             if current_sec:
-                sections.append({"section_number": current_sec, "title": f"Section {current_sec}", "content": "\n".join(content)})
-            current_sec = line.strip()[:20] # Take first 20 chars as ID
+                sections.append({
+                    "section_number": current_sec, 
+                    "title": f"Section {current_sec}", 
+                    "content": "\n".join(content)
+                })
+            current_sec = line.strip()[:20] 
             content = []
         else:
             content.append(line)
             
     if current_sec:
-        sections.append({"section_number": current_sec, "title": f"Section {current_sec}", "content": "\n".join(content)})
+        sections.append({
+            "section_number": current_sec, 
+            "title": f"Section {current_sec}", 
+            "content": "\n".join(content)
+        })
     elif not sections and text:
-        # Fallback if no sections detected
-        sections.append({"section_number": "1", "title": "General", "content": text})
+        sections.append({
+            "section_number": "1", 
+            "title": "General", 
+            "content": text
+        })
         
     return sections
 
@@ -125,7 +143,6 @@ async def generate_llm_answer(question: str, context: str) -> str:
     if response and 'answer' in response:
         return f"AI Answer: {response['answer']} (Score: {response.get('score', 0):.2f})"
     
-    # Handle possible model specific error keys
     if response and 'error' in response:
         return f"AI Error: {response['error']}"
 
